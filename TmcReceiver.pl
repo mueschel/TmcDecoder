@@ -4,9 +4,17 @@ use warnings;
 use Device::SerialPort;
 use Time::HiRes qw( usleep);
 use Data::Dumper;
+use TmcInterpreter;
 
-
-
+#Load information from DB files
+if(exists $ARGV[0] && $ARGV[0] eq 'init') {
+  TmcInitDB();
+  }
+else {
+  TmcLoadDB();
+  }
+print "Loading database finished\n";
+  
 #Open the serial device with correct settings
 $serdev = '/dev/ttyAMA0';
 
@@ -39,10 +47,12 @@ my $group = 0;
 my $firstgroup = 0;
 my $secondgroup = 0;
 my @store;
+my $bastmc = "";
 
 #Length and names of data fields for additional message fields
 my @fieldlength = (3,3,5,5,5,8,8,8,8,11,16,16,16,16,0,0);
 my @fieldnames = qw(Duration Control Length Speed Quant Quant Suppl Start Stop AddEvent Diversion Dest Resv Link Sep);
+
 
 
 while(1) {
@@ -127,23 +137,28 @@ while(1) {
       
       #If single-group: take data and decode
       if($state == 0) { 
+        my $evt = $y & 0x7FF; 
+        my $lc  = $z;
+        my $dir = (($y>>14)&1)?'neg':'pos';
+        my $extend = ($y>>11)&7;
+        my $duration = $x & 7;
+        my $diversion = $y>>15 & 1;
         printf("Ev %4d \tLC %5d\tDir %s\tExten %x\tDura %x\tDiver %x\t\n",
-          (($c[4] << 8)&0x700) + $c[5],
-          ($c[6] << 8) + $c[7],
-          (($c[4]>>6)&1)?'neg':'pos',
-          ($c[4]>>3)&7,
-          ($c[3]>>0)&7,
-          ($c[4]>>7)&1
-          );
+          $evt, $lc, $dir, $extend, $duration, $diversion);
+        $bastmc = TmcBasicInfo($evt,$lc,$dir,$extend,$duration,$diversion);
+        print $bastmc."\n";
         }
       #First word of multi-group is almost like a single-group  
       if($state == 1) { 
+        my $evt = $y & 0x7FF; 
+        my $lc  = $z;
+        my $dir = (($y>>14)&1)?'neg':'pos';
+        my $extend = ($y>>11)&7;
+        my $duration = $x & 7;
+        my $diversion = $y>>15 & 1;
         printf("Ev %4d \tLC %5d\tDir %s\tExten %x\t",
-          (($c[4] << 8)&0x700) + $c[5],
-          ($c[6] << 8) + $c[7],
-          (($c[4]>>6)&1)?'neg':'pos',
-          ($c[4]>>3)&7,
-          );
+          $evt, $lc, $dir, $extend);
+        $bastmc = TmcBasicInfo($evt,$lc,$dir,$extend);
         }
       #Inside multi group: Store information as bit-array
       if($state >= 2) {
@@ -159,16 +174,18 @@ while(1) {
           #Read 4 Bit for type
           $type = ($type << 1) | (shift @store) for (1..4);
           
-          #read payload if enough bits left, size defindet by type
+          #read payload if enough bits left, size defined by type
           if(scalar @store >= $fieldlength[$type]) {
             $data = ($data << 1) | (shift @store) for (1..$fieldlength[$type]);
             }
           #all bits 0 means end of data, otherwise print information
           unless($type == 0 && $data == 0) {
+            $bastmc .= TmcExtended($type,$data,);
             printf("(%x)%s %d\t",$type,$fieldnames[$type],$data);
             }
           }
         print "\n";
+        print $bastmc."\n";
         }
       }
       
@@ -179,18 +196,14 @@ while(1) {
         print "--------------------------------\n";
         }
       else {
-        print ("other\n");
+        #print ("other\t\t");
+        #map{printf("%02x ",$_)} @c;
+        #print("\n");        
         }
       }
-    
-    
     $last = $o[$i];
     $lastcont = $cont;
     $lastgsi  = $gsi;
     }
-
-  
-
-
   usleep(1000);
   }
