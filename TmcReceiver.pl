@@ -47,7 +47,10 @@ my $group = 0;
 my $firstgroup = 0;
 my $secondgroup = 0;
 my @store;
-my $bastmc = "";
+my @bastmc;
+my $rawtmc = "";
+my $buffer = "";
+my $rawbuffer = "";
 
 #Length and names of data fields for additional message fields
 my @fieldlength = (3,3,5,5,5,8,8,8,8,11,16,16,16,16,0,0);
@@ -76,7 +79,8 @@ while(1) {
 
     next if(($c[2]&0xF0) != 0x80); #skip any non-TMC message
     next if($last eq $o[$i]);      #skip repeated message
-    
+    $rawbuffer .= join ' ',map{sprintf("%02x",$_)} @c;
+    $rawbuffer .= "\n";
     #Reassemble interesting part of RDS data blocks
     $z    = ($c[6] << 8) + $c[7];
     $y    = ($c[4] << 8) + $c[5];
@@ -99,6 +103,8 @@ while(1) {
       #if got idle, single-group or last part of multi-group
       elsif($state == -1 || $state == 0 || ($lastgsi == 0 && $state >= 2)) {
         #Next group is start of a new single/multi-group  
+        @bastmc = ();
+        $rawtmc = "";
         if($singlegroup) { 
           $state = 0;
           $gsi   = 0;
@@ -143,10 +149,11 @@ while(1) {
         my $extend = ($y>>11)&7;
         my $duration = $x & 7;
         my $diversion = $y>>15 & 1;
-        printf("Ev %4d \tLC %5d\tDir %s\tExten %x\tDura %x\tDiver %x\t\n",
-          $evt, $lc, $dir, $extend, $duration, $diversion);
-        $bastmc = TmcBasicInfo($evt,$lc,$dir,$extend,$duration,$diversion);
-        print $bastmc."\n";
+        $rawtmc = sprintf("Ev %4d \tLC %5d\tDir %s\tExten %x\tDura %x\tDiver %x\n",
+                          $evt, $lc, $dir, $extend, $duration, $diversion);
+        push(@bastmc,TmcBasicInfo($evt,$lc,$dir,$extend,$duration,$diversion));
+        print $rawtmc.join(' ',@bastmc)."\n";
+        $buffer .= $rawtmc.join(' ',@bastmc)."\n\n";
         }
       #First word of multi-group is almost like a single-group  
       if($state == 1) { 
@@ -156,9 +163,9 @@ while(1) {
         my $extend = ($y>>11)&7;
         my $duration = $x & 7;
         my $diversion = $y>>15 & 1;
-        printf("Ev %4d \tLC %5d\tDir %s\tExten %x\t",
-          $evt, $lc, $dir, $extend);
-        $bastmc = TmcBasicInfo($evt,$lc,$dir,$extend);
+        $rawtmc = sprintf("Ev %4d \tLC %5d\tDir %s\tExten %x\t",
+                          $evt, $lc, $dir, $extend);
+        push(@bastmc,TmcBasicInfo($evt,$lc,$dir,$extend));
         }
       #Inside multi group: Store information as bit-array
       if($state >= 2) {
@@ -180,20 +187,25 @@ while(1) {
             }
           #all bits 0 means end of data, otherwise print information
           unless($type == 0 && $data == 0) {
-            $bastmc .= TmcExtended($type,$data,);
-            printf("(%x)%s %d\t",$type,$fieldnames[$type],$data);
+            TmcExtended($type,$data,\@bastmc);
+            $rawtmc .= sprintf("(%x)%s %d\t",$type,$fieldnames[$type],$data);
             }
           }
-        print "\n";
-        print $bastmc."\n";
+        print $rawtmc."\n";
+        print join(' ',@bastmc)."\n";
+        $buffer .= $rawtmc."\n".join(' ',@bastmc)."\n\n";
         }
       }
       
     #Additional information, not decoded yet  
     if($section) {
       #Just a good guess to detect end of message block and begin of next iteration
-      if ($z == 0x2020) {
+      if ($z == 0x2020 && ($y&0xFF) == 0x72) {
         print "--------------------------------\n";
+        print "--------------------------------\n";
+        savefile($buffer."\n".$rawbuffer);
+        $rawbuffer = "";
+        $buffer = "";
         }
       else {
         #print ("other\t\t");
