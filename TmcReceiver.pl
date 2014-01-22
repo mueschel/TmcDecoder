@@ -6,15 +6,7 @@ use Time::HiRes qw( usleep);
 use Data::Dumper;
 use TmcInterpreter;
 
-#Load information from DB files
-if(exists $ARGV[0] && $ARGV[0] eq 'init') {
-  TmcInitDB();
-  }
-else {
-  TmcLoadDB();
-  }
-print "Loading database finished\n";
-  
+
 #Open the serial device with correct settings
 $serdev = '/dev/ttyAMA0';
 
@@ -31,12 +23,24 @@ $port->stopbits(1);
 $port->handshake("xoff");
 $port->handshake("none"); 
 $port->read_char_time(0);
-$port->read_const_time(20);
+$port->read_const_time(50);
 $port->write_settings;
 
+#init    echo  -e "\xFF\x56\x78\x78\x56" >/dev/ttyAMA0 
+#89.3    echo  -e "\xFF\x73\x12\x00\x73" >/dev/ttyAMA0 
+#105.9   echo  -e "\xFF\x73\xb8\x00\x73" >/dev/ttyAMA0 
 
+#Load information from DB files
+if(exists $ARGV[0] && $ARGV[0] eq 'init') {
+  TmcInitDB();
+  }
+else {
+  TmcLoadDB();
+  }
+print "Loading database finished\n";
+  
 
-my $raw = 0;
+my $raw = 1;
 my $str = "";
 my $last = "";
 my $state = -1;  #-1 init, 0 single, 1 multi 1st, 2 multi 2nd...
@@ -51,6 +55,7 @@ my @bastmc;
 my $rawtmc = "";
 my $buffer = "";
 my $rawbuffer = "";
+my $cntruns = 0;
 
 #Length and names of data fields for additional message fields
 my @fieldlength = (3,3,5,5,5,8,8,8,8,11,16,16,16,16,0,0);
@@ -60,25 +65,25 @@ my @fieldnames = qw(Duration Control Length Speed Quant Quant Suppl Start Stop A
 
 while(1) {
   #get a bunch of data from the serial device
-  my ($cnt,$a) = $port->read(250);
+  my ($cnt,$a) = $port->read(255);
   $str .= $a; #str can contain leftover bits from last buffer
-  my @o = split('\?\?',$str);
+  my @o = split('\?',$str);
   $str = $o[-1]; #store last string as it may be incomplete
 
   #loop over all RDS groups received
   for(my $i = 0; $i < (scalar @o)-1; $i++) {
-  
+    next if ($o[$i] eq '');
     #Convert string to array of 8 bytes
     my @c = split('',$o[$i]);
     @c = map {ord($_)} @c;
-
-    if($raw) { #Print raw data if requested
-      map{printf("%02x ",$_)} @c;
-      print("\n");
-      }
-
+    $c[7] = 0x3F unless exists $c[7];
     next if(($c[2]&0xF0) != 0x80); #skip any non-TMC message
     next if($last eq $o[$i]);      #skip repeated message
+    if($raw) { #Print raw data if requested
+      map{printf("%02x ",$_)} @c;
+      #print("\n");
+      }
+
     $rawbuffer .= join ' ',map{sprintf("%02x",$_)} @c;
     $rawbuffer .= "\n";
     #Reassemble interesting part of RDS data blocks
@@ -137,8 +142,8 @@ while(1) {
         }
     
     #Skip yet ignored group types
+    print("\t/S$state/\n");  
     unless($section) {
-      #print("/S$state/\t");  
       #printf("%x %x %x %x %x\t",$cont,$singlegroup,$firstgroup,$secondgroup,$gsi);
       
       #If single-group: take data and decode
@@ -152,7 +157,7 @@ while(1) {
         $rawtmc = sprintf("Ev %4d \tLC %5d\tDir %s\tExten %x\tDura %x\tDiver %x\n",
                           $evt, $lc, $dir, $extend, $duration, $diversion);
         push(@bastmc,TmcBasicInfo($evt,$lc,$dir,$extend,$duration,$diversion));
-        print $rawtmc.join(' ',@bastmc)."\n";
+        print $rawtmc.join(' ',@bastmc)."\n\n";
         $buffer .= $rawtmc.join(' ',@bastmc)."\n\n";
         }
       #First word of multi-group is almost like a single-group  
@@ -192,7 +197,7 @@ while(1) {
             }
           }
         print $rawtmc."\n";
-        print join(' ',@bastmc)."\n";
+        print join(' ',@bastmc)."\n\n";
         $buffer .= $rawtmc."\n".join(' ',@bastmc)."\n\n";
         }
       }
@@ -200,12 +205,15 @@ while(1) {
     #Additional information, not decoded yet  
     if($section) {
       #Just a good guess to detect end of message block and begin of next iteration
-      if ($z == 0x2020 && ($y&0xFF) == 0x72) {
-        print "--------------------------------\n";
-        print "--------------------------------\n";
-        savefile($buffer."\n".$rawbuffer);
-        $rawbuffer = "";
-        $buffer = "";
+      if ($z == 0x2020 && ($y&0xFF) == 0x20) {
+        print "--------------------------------$cntruns\n";
+        print "--------------------------------$cntruns\n";
+        if(++$cntruns >= 4) {
+          $cntruns = 0;
+          savefile($buffer."\n".$rawbuffer);
+          $rawbuffer = "";
+          $buffer = "";
+          }
         }
       else {
         #print ("other\t\t");
