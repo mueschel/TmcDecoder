@@ -150,12 +150,12 @@ while(1) {
       if($state == 0) { 
         my $evt = $y & 0x7FF; 
         my $lc  = $z;
-        my $dir = (($y>>14)&1)?'neg':'pos';
+        my $dir = (($y>>14)&1);
         my $extend = ($y>>11)&7;
         my $duration = $x & 7;
         my $diversion = $y>>15 & 1;
         $rawtmc = sprintf("Ev %4d \tLC %5d\tDir %s\tExten %x\tDura %x\tDiver %x\n",
-                          $evt, $lc, $dir, $extend, $duration, $diversion);
+                          $evt, $lc, $dir?'neg':'pos', $extend, $duration, $diversion);
         push(@bastmc,TmcBasicInfo($evt,$lc,$dir,$extend,$duration,$diversion));
         print $rawtmc.join(' ',@bastmc)."\n\n";
         $buffer .= $rawtmc.join(' ',@bastmc)."\n\n";
@@ -164,12 +164,12 @@ while(1) {
       if($state == 1) { 
         my $evt = $y & 0x7FF; 
         my $lc  = $z;
-        my $dir = (($y>>14)&1)?'neg':'pos';
+        my $dir = (($y>>14)&1);
         my $extend = ($y>>11)&7;
         my $duration = $x & 7;
         my $diversion = $y>>15 & 1;
         $rawtmc = sprintf("Ev %4d \tLC %5d\tDir %s\tExten %x\t",
-                          $evt, $lc, $dir, $extend);
+                          $evt, $lc, $dir?'neg':'pos', $extend);
         push(@bastmc,TmcBasicInfo($evt,$lc,$dir,$extend));
         }
       #Inside multi group: Store information as bit-array

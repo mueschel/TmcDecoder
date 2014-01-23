@@ -2,6 +2,10 @@
 # use warnings;
 use Storable qw(lock_store lock_retrieve);
 use POSIX qw/floor/;
+use feature qw/say switch/;
+
+
+
 
 our $lcl;
 our $eve;
@@ -95,6 +99,7 @@ sub getName {
 sub getTime {  
   my $val = shift @_;
   my $t;
+  my ($sec,$min,$hour,$day,$month,$year) = localtime();
   if($val <= 95) {
     my $h = floor($val /4);
     my $m = ($val % 4)*15;
@@ -102,17 +107,22 @@ sub getTime {
     }
   elsif($val <= 200) {
     $val -= 95;
-    return "morgen $val Uhr" if($val <= 24);
+    return "morgen $val Uhr" if($val <= 24 && $hour!=0); #UTC!
+    return "heute $val Uhr" if($val <= 24 && $hour==0);
     $val -= 24;
-    return "übermorgen $val Uhr" if($val <= 24);
+    return "uebermorgen $val Uhr" if($val <= 24 && $hour!=0); #UTC!
+    return "morgen $val Uhr" if($val <= 24 && $hour==0);
     $val -= 24;
-    return "in drei Tagen $val Uhr" if($val <= 24);
+    return "in drei Tagen $val Uhr" if($val <= 24 && $hour!=0); #UTC!
+    return "uebermorgen $val Uhr" if($val <= 24 && $hour==0);
     $val -= 24;
     return "in vier Tagen $val Uhr" if($val <= 24);
     return "\"T+".($val-96)."h";
     }
   elsif($val <= 231) {
-    return ($val-200).".";
+    $val -= 200;
+    if($val<=$day) {return $val.".".$months[$month%12];}
+    else           {return $val.".".$months[($month-1)%12];}
     }
   else {
     $val = $val - 232;
@@ -125,26 +135,60 @@ sub getTime {
   }
 
   
-sub getBigQuant {
+sub getQuant {
   my ($event,$value) = @_;
   my $type = $eve->{$event}->[3];
-  my $long = 0;
-     $long = 1 if ($eve->{$event}->[4] eq 'L');
   my $t = "";
-  $t .= "$value" if($type == 0);
-  $t .= "$value" if($type == 1);
-  $t .= "weniger als $value Meter" if($type == 2);
-  $t .= "$value%" if($type == 3);
-  $t .= "bis zu $value km/h" if($type == 4);
-  $t .= "bis zu $value Minuten" if($type == 5 && $long == 0);
-  $t .= "bis zu $value Stunden" if($type == 5 && $long == 1);
-  $t .= "bis zu $value°C" if($type == 6);
-  $t .= "$value Uhr" if($type == 7);
-  $t .= ($value/10)." Tonnen" if($type == 8);
-  $t .= ($value/10)." Meter" if($type == 9);
-  $t .= "bis zu $value mm" if($type == 10);
-  $t .= "$value MHz" if($type == 11);
-  $t .= "$value kHz" if($type == 12);
+  given ($type) {
+    when(0) {
+      if ($value >=28) {$value = $value*2-28;}
+      $t .= $value;
+      }
+    when(1) {
+      if($value == 0)    { $t .= 1000;}
+      elsif($value <= 4) { $t .= $value;}
+      elsif($value < 15) { $t .= (($value-4)*10);}
+      else               { $t .= (($value-12)*50);}
+      }
+    when(2) {
+      $t .= "weniger als ".($value*10)." Meter";
+      }
+    when(3) {
+      $t .= (($value-1)*5)."%";
+      }
+    when(4) {
+      $t .= "bis zu ".($value*5)."km/h";
+      }
+    when(5) {
+      if($value<=11)    { $t .= "bis zu ".($value*5)." Minuten";}
+      elsif($value<=22) { $t .= "bis zu ".($value-10)." Stunden";}
+      else              { $t .= "bis zu ".(($value-20)*6)." Stunden";}
+      }
+    when(6) {
+      $t .= ($value-51)."°C";
+      }
+    when(7) {
+      $value--;
+      $t .= (floor($value/6)).":".($value%6);
+      }
+    when(8) {
+      if($value<=100) {$t .= ($value/10)." Tonnen";}
+      else            {$t .= ($value/2-40)." Tonnen";}
+      }
+    when(9) {
+      if($value<=100) {$t .= ($value/10)." Meter";}
+      else            {$t .= ($value/2-40)." Meter";}
+      }
+    when(10) {
+      $t .= "bis zu ".$value." Millimeter";
+      }
+    when(11) {
+      $t .= ($value/10+87.5)." MHz";
+      }
+    when(12) {
+      $t .= ($value*9+144)." kHz";
+      }
+    }
   return $t;  
   }
   
@@ -198,7 +242,7 @@ sub TmcExtended {
   if($type == 1) { #control
     if ($value == 2) { #directionality changed
 #       if ($eve->{$curevt}->[5] == 1) {
-        push(@$t,"in beiden Richtungen,");
+        push(@$t,"in beiden Richtungen");
 #         }
 #       else {
 #         push(@$t,"in dieser Richtung,");
@@ -214,38 +258,38 @@ sub TmcExtended {
     }
   if($type == 2) {#Length
     if($value>=1 && $value<=10) {
-      push(@$t,$value."km,");
+      push(@$t,$value."km");
       }
     if($value>=11 && $value<=15) {
       my $v = ($value-5)*2;
-      push(@$t,$v."km,");
+      push(@$t,$v."km");
       }
     if($value>=16 && $value<=31) {
       my $v = ($value-11)*5;
-      push(@$t,$v."km,");
+      push(@$t,$v."km");
       }
     if($value == 0) {
-      push(@$t,">100km,");
+      push(@$t,">100km");
       }
     }    
-  if($type == 5) { #Big number quantifier
-    push(@$t,getBigQuant($curevt,$value));
+  if($type == 4 || $type == 5) { #Number quantifier
+    push(@$t,getQuant($curevt,$value));
     }
   if($type == 6) { #supplemental information
-    push(@$t,$supeve->{$value}->[1].",");
+    push(@$t,$supeve->{$value}->[1]);
     }
   if($type == 7) { #start time
-    push(@$t,"ab ".getTime($value).",");
+    push(@$t,"ab ".getTime($value));
     }
   if($type == 8) { #stop time
-    push(@$t,"bis ".getTime($value).",");
+    push(@$t,"bis ".getTime($value));
     }
   if($type == 9) { #additional event
-    push(@$t,$eve->{$value}->[1].",");
+    push(@$t,$eve->{$value}->[1]);
     $curevt=$value;
     }
   if($type == 11) { #Destination
-    push(@$t,"in Richtung ".getName($lcl->{$value}).",");
+    push(@$t,"in Richtung ".getName($lcl->{$value}));
     }
   if($type == 14) { #separator
     push(@$t,' | ');
