@@ -121,8 +121,8 @@ sub getTime {
     }
   elsif($val <= 231) {
     $val -= 200;
-    if($val<=$day) {return $val.".".$months[$month%12];}
-    else           {return $val.".".$months[($month-1)%12];}
+    if($val<=$day) {return $val.".".$months[($month+1)%12];}
+    else           {return $val.".".$months[$month];}
     }
   else {
     $val = $val - 232;
@@ -198,7 +198,7 @@ sub getRange {
   my $e = $extend;
   my $start = $loc;
   while($e-- > 0) {
-    if(!$dir && $start->[9] ne "") {
+    if($dir && $start->[9] ne "") {
       $start = $lcl->{$start->[9]};
       }
     elsif ($start->[10] ne "") {
@@ -227,10 +227,10 @@ sub TmcBasicInfo {
   my $loc = $lcl->{$lc};
   my $seg = $lcl->{$loc->[8]};
   if(!$dir) {
-    push(@t,$seg->[3]." ".$seg->[5]." -> ".$seg->[6]);
+    push(@t,$seg->[3]." ".$seg->[6]." -> ".$seg->[5]);
     }
   else {
-    push(@t,$seg->[3]." ".$seg->[6]." -> ".$seg->[5]);
+    push(@t,$seg->[3]." ".$seg->[5]." -> ".$seg->[6]);
     }
   push(@t,getRange($extend,$dir,$loc));
   push(@t,$eve->{$evt}->[1].",");
