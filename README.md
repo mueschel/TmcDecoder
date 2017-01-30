@@ -2,6 +2,7 @@ TmcDecoder
 ==========
 
 A decoder for traffic information sent via RDS.
+Hardware prerequisites: A RDS receiver that sends the data to the computer, in my case with a serial interface.
 
 
 TmcReceiver.pl
@@ -14,3 +15,9 @@ TmcInterpreter.pm
 -----------------
 Few functions that read data about Locations and Events from a database file und try do decode the TMC message into an almost human read-able format. 
 The actual data files are not included for license reasons.
+
+
+*.csv
+-----
+These are the TMC data files I can not provide. In many countries they can be obtained for free.
+Needed tables: Location, event types, supplementary event types and list of object types.
